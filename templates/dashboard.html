@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>PulseOps</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #06080d;
+            --card-bg: #0d111a;
+            --border: #1a2333;
+            --accent-red: #ff2a5f;
+            --accent-green: #00e676;
+            --accent-yellow: #ffca28;
+            --accent-blue: #38bdf8;
+            --text: #f8fafc;
+            --text-sub: #94a3b8;
+            --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+            --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-ui);
+            padding: 22px 28px;
+            min-height: 100vh;
+            width: 100%;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .dashboard-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .header {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            width: 100%;
+        }
+        .header h1 {
+            font-size: 2em;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: #ffffff;
+            line-height: 1;
+        }
+        .header h1 span { color: var(--accent-red); }
+        .header p { color: var(--text-sub); font-size: 0.84em; margin-top: 5px; font-family: var(--font-mono); }
+        
+        .header-actions { display: flex; gap: 14px; align-items: center; }
+
+        .nav-link {
+            text-decoration: none;
+            color: #ffffff;
+            background: #181b29;
+            border: 1.5px solid var(--accent-red);
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-size: 0.82em;
+            font-family: var(--font-mono);
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 0 14px rgba(255, 42, 95, 0.25);
+            transition: all 0.2s ease;
+        }
+        .nav-link:hover {
+            background: var(--accent-red);
+            color: #ffffff;
+            box-shadow: 0 0 20px rgba(255, 42, 95, 0.6);
+            transform: translateY(-1px);
+        }
+
+        .last-update {
+            font-size: 0.78em;
+            color: var(--text-sub);
+            font-family: var(--font-mono);
+            background: #131926;
+            padding: 7px 14px;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+        }
+
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; width: 100%; }
+        .grid-2 { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 16px; width: 100%; }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px 22px;
+            width: 100%;
+        }
+        .card-title {
+            font-size: 0.76em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-sub);
+            margin-bottom: 12px;
+            font-family: var(--font-mono);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .metric-val { font-size: 2.6em; font-weight: 800; line-height: 1; font-family: var(--font-mono); }
+        .metric-bar { height: 4px; background: #161c28; border-radius: 2px; margin-top: 12px; overflow: hidden; }
+        .metric-bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; }
+
+        .green { color: var(--accent-green); }
+        .yellow { color: var(--accent-yellow); }
+        .red { color: var(--accent-red); }
+        .muted { color: #475569; }
+
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        col.c-name { width: 28%; }
+        col.c-status { width: 13%; }
+        col.c-cpu { width: 12%; }
+        col.c-mem { width: 12%; }
+        col.c-req { width: 15%; }
+        col.c-act { width: 20%; }
+
+        th {
+            font-size: 0.74em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-sub);
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-mono);
+            text-align: left;
+        }
+        th.text-center, td.text-center { text-align: center; }
+
+        td {
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-size: 0.84em;
+            font-weight: 600;
+            font-family: var(--font-mono);
+            color: #f1f5f9;
+            vertical-align: middle;
+        }
+
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72em; font-weight: 700; }
+        .badge-running { background: rgba(0, 230, 118, 0.12); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .badge-exited { background: rgba(255, 42, 95, 0.12); color: var(--accent-red); border: 1px solid var(--accent-red); }
+        .badge-restarting { background: rgba(255, 202, 40, 0.12); color: var(--accent-yellow); border: 1px solid var(--accent-yellow); }
+
+        .action-group { display: flex; gap: 8px; justify-content: center; align-items: center; }
+        .btn {
+            border: none;
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.74em;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            transition: all 0.15s;
+        }
+        .btn-stop { background: rgba(255, 42, 95, 0.15); color: var(--accent-red); border: 1px solid var(--accent-red); }
+        .btn-stop:hover { background: var(--accent-red); color: #fff; }
+        .btn-start { background: rgba(0, 230, 118, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .btn-start:hover { background: var(--accent-green); color: #000; }
+        .btn-remove { background: #182030; color: #94a3b8; border: 1px solid #28354d; }
+        .btn-remove:hover { background: var(--accent-red); color: #fff; border-color: var(--accent-red); }
+        
+        .btn-primary { background: #1c263b; color: #fff; border: 1px solid var(--border); padding: 8px 24px; font-size: 0.78em; }
+        .btn-primary:hover { background: #ffffff; color: #000; }
+
+        .run-box { display: flex; gap: 12px; align-items: center; width: 100%; }
+        input {
+            background: #080b11;
+            color: #fff;
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.82em;
+            outline: none;
+        }
+        input::placeholder { color: #475569; }
+        input:focus { border-color: var(--accent-blue); }
+
+        .event-item { font-size: 0.8em; font-family: var(--font-mono); color: var(--text-sub); padding: 6px 0; border-bottom: 1px solid var(--border); }
+        .event-item:last-child { border-bottom: none; }
+        .event-alert { color: var(--accent-red); font-weight: 700; }
+        .no-data { color: #475569; font-size: 0.8em; font-family: var(--font-mono); padding: 4px 0; }
+
+        .traffic-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.82em; font-weight: 600; }
+        .traffic-row:last-child { border-bottom: none; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75);
+            z-index: 999;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: var(--card-bg);
+            border: 1px solid var(--accent-red);
+            padding: 22px;
+            border-radius: 8px;
+            max-width: 440px;
+            width: 90%;
+            text-align: center;
+        }
+        .modal-content h3 { color: var(--accent-red); margin-bottom: 8px; font-family: var(--font-mono); font-size: 1em; }
+        .modal-content p { color: var(--text-sub); font-size: 0.84em; margin-bottom: 16px; }
+        .modal-actions { display: flex; justify-content: center; gap: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-container">
+    <div class="header">
+        <div>
+            <h1>Pulse<span>Ops</span></h1>
+            <p>Container & Infrastructure Telemetry</p>
+        </div>
+        <div class="header-actions">
+            <a href="/alerts" class="nav-link"><span>🔔</span> ALERTS HISTORY</a>
+            <div class="last-update" id="last-update">Connecting...</div>
+        </div>
+    </div>
+
+    <!-- Cards Row -->
+    <div class="grid-3">
+        <div class="card">
+            <div class="card-title">CPU Utilization</div>
+            <div class="metric-val green" id="cpu">--%</div>
+            <div class="metric-bar"><div class="metric-bar-fill" id="cpu-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="card">
+            <div class="card-title">RAM Allocation</div>
+            <div class="metric-val green" id="ram">--%</div>
+            <div class="metric-bar"><div class="metric-bar-fill" id="ram-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="card">
+            <div class="card-title">Disk Storage</div>
+            <div class="metric-val green" id="disk">--%</div>
+            <div class="metric-bar"><div class="metric-bar-fill" id="disk-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+    </div>
+
+    <!-- Full-Width Containers Table -->
+    <div class="card">
+        <div class="card-title">
+            <span>Containers Watchlist</span>
+            <span style="font-size: 0.82em; color: var(--text-sub); text-transform: none; letter-spacing: 0;">Top 5</span>
+        </div>
+        <table>
+            <colgroup>
+                <col class="c-name">
+                <col class="c-status">
+                <col class="c-cpu">
+                <col class="c-mem">
+                <col class="c-req">
+                <col class="c-act">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>Container Name</th>
+                    <th class="text-center">Status</th>
+                    <th class="text-center">CPU</th>
+                    <th class="text-center">Memory</th>
+                    <th class="text-center">Requests / 5min</th>
+                    <th class="text-center">Action</th>
+                </tr>
+            </thead>
+            <tbody id="containers"></tbody>
+        </table>
+    </div>
+
+    <!-- Graph & Telemetry -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">
+                <span>Critical CPU Spike History (≥85%)</span>
+                <span style="color: var(--accent-red); font-size: 0.85em; font-weight: 800;">CRITICAL SPIKES</span>
+            </div>
+            <div style="height: 160px; position: relative; width: 100%;">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div class="card" style="flex: 1;">
+                <div class="card-title">Recent Events</div>
+                <div id="events"><div class="no-data">No events yet</div></div>
+            </div>
+            <div class="card" style="flex: 1;">
+                <div class="card-title">Traffic — Last 5 min</div>
+                <div id="traffic"><div class="no-data">No running containers</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Run Box -->
+    <div class="card">
+        <div class="card-title">Run New Container</div>
+        <div class="run-box">
+            <input type="text" id="new-image" placeholder="Image name (e.g. nginx:alpine)" style="flex: 2;"/>
+            <input type="text" id="new-name" placeholder="Container name (e.g. test-nginx)" style="flex: 1.2;"/>
+            <button class="btn btn-primary" onclick="runContainer()">RUN</button>
+        </div>
+        <div style="margin-top:6px; font-size: 0.78em; font-family: var(--font-mono); min-height: 14px;"><span id="run-msg"></span></div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal" id="volModal">
+    <div class="modal-content">
+        <h3>VOLUMES DETECTED</h3>
+        <p id="volModalText">This container has storage volumes attached.</p>
+        <div class="modal-actions">
+            <button class="btn btn-remove" id="confirmDeleteBtn">CONFIRM DELETE</button>
+            <button class="btn btn-primary" onclick="closeModal()">CANCEL</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const socket = io();
+    let containerPendingDelete = null;
+
+    // Neon Red Critical Spikes Chart Config
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    const trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Critical CPU %',
+                    borderColor: '#ff2a5f',
+                    backgroundColor: 'rgba(255, 42, 95, 0.18)',
+                    data: [],
+                    borderWidth: 2.2,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#ff2a5f',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 1.5,
+                    tension: 0.2,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    min: 0,
+                    max: 100,
+                    grid: { color: '#161c28' },
+                    ticks: { color: '#ff2a5f', font: { size: 9, family: 'monospace', weight: 'bold' } }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#94a3b8', font: { size: 9, family: 'monospace' } }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: { color: '#ff2a5f', font: { size: 10, family: 'monospace', weight: 'bold' }, boxWidth: 10 }
+                }
+            }
+        }
+    });
+
+    function getColor(val) {
+        if (val >= 90) return 'var(--accent-red)';
+        if (val >= 75) return 'var(--accent-yellow)';
+        return 'var(--accent-green)';
+    }
+
+    function getClass(val) {
+        if (val >= 90) return 'red';
+        if (val >= 75) return 'yellow';
+        return 'green';
+    }
+
+    function renderContainers(containers, trafficMap) {
+        const tbody = document.getElementById('containers');
+        tbody.innerHTML = '';
+        containers.forEach(c => {
+            const badgeClass = c.status === 'running' ? 'badge-running' : c.status === 'restarting' ? 'badge-restarting' : 'badge-exited';
+            const actionBtn = c.status === 'running'
+                ? `<button class="btn btn-stop" onclick="stopContainer('${c.name}')">STOP</button>`
+                : `<button class="btn btn-start" onclick="startContainer('${c.name}')">START</button>`;
+            
+            const removeBtn = `<button class="btn btn-remove" onclick="handleRemoveClick('${c.name}')">REMOVE</button>`;
+
+            const cpu = c.cpu_percent !== null && c.cpu_percent !== undefined
+                ? `<span class="${getClass(c.cpu_percent)}">${c.cpu_percent}%</span>`
+                : '<span class="muted">—</span>';
+            const mem = c.mem_percent !== null && c.mem_percent !== undefined
+                ? `<span class="${getClass(c.mem_percent)}">${c.mem_percent}%</span>`
+                : '<span class="muted">—</span>';
+            
+            const req = trafficMap && trafficMap[c.name] !== undefined 
+                ? `<span style="font-weight:700; color:${trafficMap[c.name] > 100 ? 'var(--accent-red)' : 'var(--text)'};">${trafficMap[c.name]} req</span>` 
+                : '<span class="muted">—</span>';
+
+            tbody.innerHTML += `<tr>
+                <td style="font-weight:600;">${c.name}</td>
+                <td class="text-center"><span class="badge ${badgeClass}">${c.status.toUpperCase()}</span></td>
+                <td class="text-center">${cpu}</td>
+                <td class="text-center">${mem}</td>
+                <td class="text-center">${req}</td>
+                <td class="text-center"><div class="action-group">${actionBtn}${removeBtn}</div></td>
+            </tr>`;
+        });
+    }
+
+    function applyData(data) {
+        document.getElementById('last-update').innerText = 'Synced: ' + new Date().toLocaleTimeString();
+
+        if (data.metrics) {
+            ['cpu','ram','disk'].forEach(key => {
+                const val = key === 'cpu' ? data.metrics.cpu_percent : key === 'ram' ? data.metrics.ram_percent : data.metrics.disk_percent;
+                const el = document.getElementById(key);
+                el.innerText = val + '%';
+                el.className = 'metric-val ' + getClass(val);
+                const bar = document.getElementById(key + '-bar');
+                bar.style.width = val + '%';
+                bar.style.background = getColor(val);
+            });
+        }
+
+        const trafficMap = {};
+        (data.traffic || []).forEach(t => { trafficMap[t.name] = t.requests; });
+        renderContainers(data.containers || [], trafficMap);
+
+        if (data.history) {
+            trendChart.data.labels = data.history.map(h => h.time.split(':').slice(1).join(':'));
+            trendChart.data.datasets[0].data = data.history.map(h => h.cpu);
+            trendChart.update('none');
+        }
+
+        const eventsEl = document.getElementById('events');
+        if (data.events && data.events.length > 0) {
+            eventsEl.innerHTML = data.events.map(e =>
+                `<div class="event-item ${e.includes('ALERT') ? 'event-alert' : ''}">${e}</div>`
+            ).join('');
+        } else {
+            eventsEl.innerHTML = '<div class="no-data">No events yet</div>';
+        }
+
+        const trafficEl = document.getElementById('traffic');
+        if (data.traffic && data.traffic.length > 0) {
+            trafficEl.innerHTML = data.traffic.map(t =>
+                `<div class="traffic-row"><span>${t.name}</span><span class="${t.requests > 100 ? 'red' : 'green'}">${t.requests} req</span></div>`
+            ).join('');
+        } else {
+            trafficEl.innerHTML = '<div class="no-data">No running containers</div>';
+        }
+    }
+
+    function loadInitialData() {
+        Promise.all([
+            fetch('/api/metrics').then(r => r.json()),
+            fetch('/api/containers').then(r => r.json()),
+            fetch('/api/events').then(r => r.json()),
+            fetch('/api/history/metrics').then(r => r.json())
+        ]).then(([metrics, containers, events, history]) => {
+            applyData({ metrics, containers, events, history, traffic: [] });
+        }).catch(err => console.error(err));
+    }
+
+    loadInitialData();
+
+    socket.on('update', function(data) {
+        applyData(data);
+    });
+
+    function stopContainer(name) {
+        fetch('/api/containers/stop', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name})
+        })
+        .then(r => r.json())
+        .then(data => { if (data.success) refreshContainers(); });
+    }
+
+    function startContainer(name) {
+        fetch('/api/containers/attach', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name})
+        })
+        .then(r => r.json())
+        .then(data => { if (data.success) refreshContainers(); });
+    }
+
+    function handleRemoveClick(name) {
+        fetch('/api/containers/volume-check', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name})
+        }).then(r => r.json()).then(res => {
+            if (res.has_volume) {
+                containerPendingDelete = name;
+                document.getElementById('volModalText').innerText = 
+                    `Container '${name}' has mounted volumes: [${res.volumes.join(', ')}]. Confirm removal?`;
+                document.getElementById('volModal').style.display = 'flex';
+            } else {
+                if (confirm(`Remove container '${name}'?`)) {
+                    executeRemove(name);
+                }
+            }
+        });
+    }
+
+    document.getElementById('confirmDeleteBtn').onclick = function() {
+        if (containerPendingDelete) {
+            executeRemove(containerPendingDelete);
+            closeModal();
+        }
+    };
+
+    function closeModal() {
+        document.getElementById('volModal').style.display = 'none';
+        containerPendingDelete = null;
+    }
+
+    function executeRemove(name) {
+        fetch('/api/containers/remove', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name})
+        }).then(r => r.json()).then(data => {
+            refreshContainers();
+        });
+    }
+
+    function refreshContainers() {
+        fetch('/api/containers')
+            .then(r => r.json())
+            .then(containers => renderContainers(containers, {}));
+    }
+
+    function runContainer() {
+        const image = document.getElementById('new-image').value.trim();
+        const name = document.getElementById('new-name').value.trim();
+        const msg = document.getElementById('run-msg');
+        if (!image) {
+            msg.style.color = 'var(--accent-red)';
+            msg.innerText = 'Image name required';
+            return;
+        }
+        fetch('/api/containers/run', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({image: image, name: name})
+        })
+        .then(r => r.json())
+        .then(data => {
+            msg.style.color = data.success ? 'var(--accent-green)' : 'var(--accent-red)';
+            msg.innerText = (data.success ? 'Launched: ' : 'Error: ') + data.message;
+            if (data.success) {
+                document.getElementById('new-image').value = '';
+                document.getElementById('new-name').value = '';
+                refreshContainers();
+            }
+        });
+    }
+</script>
+</body>
+</html>

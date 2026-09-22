@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  pulseops:
+    build: .
+    container_name: pulseops-dashboard
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - DATA_DIR=/app/data
+      - FLASK_ENV=production
+    volumes:
+      # Host Docker socket mount (container management ke liye)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent SQLite DB folder map
+      - /home/vboxuser/pulseops-data:/app/data
