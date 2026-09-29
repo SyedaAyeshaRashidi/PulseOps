@@ -1,36 +1,47 @@
-# PulseOps — Container & Infrastructure Monitoring Hub
+# PulseOps
 
-A real-time DevOps monitoring dashboard built to observe Linux server health and Docker container lifecycle from a single, unified interface. PulseOps continuously tracks system resource utilization, detects container crashes, monitors incoming traffic, persists historical alert data, and fires automated email notifications — all without any third-party monitoring service.
+PulseOps is a real-time monitoring dashboard for Linux servers and Docker containers. It tracks CPU, RAM and disk usage, detects container crashes, monitors HTTP traffic, stores alert history, and sends email notifications when a threshold is crossed. It runs as a self-hosted tool and does not depend on any third-party monitoring service.
+
+- **Repository:** https://github.com/SyedaAyeshaRashidi/PulseOps
+- **Live Dashboard:** http://13.60.249.241:5000
+- **Status:** Monitored 24/7 via UptimeRobot
+
+---
+
+## Dashboard Preview
+
+![PulseOps Dashboard Preview](dashboard-preview.png)
 
 ---
 
 ## Features
 
-**Real-Time Server Monitoring**
-- Live CPU, RAM, and Disk utilization with dynamic color-coded gauges (green → yellow → red)
-- 10-second polling via WebSockets (Socket.IO) with instant REST-based initial load
+### Server Monitoring
+- Live CPU, RAM and disk usage with color-coded bars (green, yellow, red)
+- Updates every 10 seconds over WebSockets (Socket.IO), with a REST call for the first load
+- Dark UI that works on both desktop and mobile
 
-**Docker Container Management**
-- Auto-discovers all running and exited containers via Docker SDK
-- Start, Stop, and Remove containers directly from the dashboard
-- Volume Safety Check — detects attached volumes/bind mounts before removal and shows a warning popup to prevent accidental data loss
-- Launch new containers by image name from the UI
-- 409 Conflict Protection — if a container with the same name already exists (exited), it is restarted instead of erroring out
+### Docker Container Management
+- Lists all running and exited containers using the Docker SDK
+- Start, stop and remove containers from the dashboard
+- **Volume safety check:** if a container has volumes or bind mounts attached, you get a warning before removing it so you don't lose data by accident
+- Launch a new container just by typing an image name
+- **409 conflict handling:** if a container with the same name already exists (exited), it gets restarted instead of throwing an error
 
-**Intelligent Alerting Engine**
-- System-level alerts: CPU ≥ 85%, RAM ≥ 80%, Disk ≥ 90% (sustained over 3 consecutive checks to avoid false positives)
-- Container-level alerts: per-container CPU spike, memory warning (80%), memory critical (90%), and unexpected crash detection
-- Smart crash detection — differentiates between a manual UI stop and an actual crash; alert only fires on genuine crashes
-- Email notifications via SMTP (Gmail App Password)
+### Alerting
+- **System alerts:** CPU ≥ 85%, RAM ≥ 80%, Disk ≥ 90%, and the value has to stay high for 3 checks in a row, so a single spike doesn't trigger a false alarm
+- **Container alerts:** CPU spikes, memory warning (80%), memory critical (90%) and unexpected crashes
+- Tells the difference between a container you stopped from the UI and one that actually crashed. Only real crashes send an alert
+- Emails go out over SMTP using a Gmail App Password
 
-**Traffic Monitoring**
-- Parses live container access logs to count HTTP requests in the last 5 minutes
-- Per-container request count displayed in the dashboard table and traffic widget
+### Traffic Monitoring
+- Reads container access logs and counts HTTP requests from the last 5 minutes
+- Request count per container shows up in the table and in the traffic widget
 
-**Persistent History**
-- SQLite database stores all past alerts and critical metric spikes
-- Alert History page accessible via dashboard (persists across app restarts)
-- Critical CPU spike graph powered by Chart.js — only plots anomalies, not idle baseline data
+### History
+- SQLite stores past alerts and critical metric spikes, so nothing is lost when the app restarts
+- Separate Alert History page
+- Chart.js graph for critical CPU spikes. It only plots the spikes, not the idle baseline
 
 ---
 
@@ -39,28 +50,33 @@ A real-time DevOps monitoring dashboard built to observe Linux server health and
 | Layer | Technology |
 |---|---|
 | Backend | Python, Flask, Flask-SocketIO, Flask-SQLAlchemy |
-| Container API | Docker SDK for Python (`docker.sock`) |
-| Host Telemetry | `psutil` |
+| Container API | Docker SDK for Python |
+| Host metrics | psutil |
 | Database | SQLite |
-| Real-time | WebSockets via Socket.IO |
-| Frontend | HTML5, Vanilla JS, CSS Grid, Chart.js |
-| Alerting | Python `smtplib` (SMTP over TLS) |
-| Deployment | Docker, Docker Compose |
+| Real-time | Socket.IO (WebSockets) |
+| Frontend | HTML, vanilla JS, CSS Grid / Flexbox, Chart.js |
+| Email alerts | Python `smtplib` (SMTP over TLS) |
+| Hosting | AWS EC2, systemd, Docker |
+| Uptime check | UptimeRobot |
 
 ---
 
 ## Project Structure
-```
-pulseops/
+
+```text
+PulseOps/
 ├── app.py                  # Flask app, routes, alert logic, background thread
 ├── collector.py            # Host CPU/RAM/Disk metrics via psutil
-├── docker_health.py        # Docker container stats via Docker SDK
+├── docker_health.py        # Container stats via Docker SDK
 ├── traffic_monitor.py      # HTTP request count from container logs
-├── alerts.py               # Email alert engine (SMTP)
+├── alerts.py               # Email alerts (SMTP)
 ├── database.py             # SQLAlchemy models (MetricHistory, AlertHistory)
-├── main.py                 # CLI terminal dashboard (standalone mode)
+├── main.py                 # Terminal dashboard (standalone mode)
 ├── templates/
-│   └── dashboard.html      # Frontend — dark UI, Socket.IO, Chart.js
+│   ├── dashboard.html      # Main dashboard (dark UI, Socket.IO, Chart.js)
+│   └── alerts.html         # Alert history page
+├── docs/
+│   └── dashboard-preview.png
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
@@ -71,14 +87,15 @@ pulseops/
 ## Getting Started
 
 ### Prerequisites
-- Docker and Docker Compose installed
-- Gmail account with App Password enabled (for email alerts)
+- Docker and Docker Compose
+- Python 3.10+
+- A Gmail account with an App Password (for email alerts)
 
 ### Run with Docker Compose
 
 ```bash
-git clone https://github.com/SyedaAyeshaRashidi/pulseops.git
-cd pulseops
+git clone https://github.com/SyedaAyeshaRashidi/PulseOps.git
+cd PulseOps
 
 export GMAIL_ADDRESS="your@gmail.com"
 export GMAIL_APP_PASSWORD="your_app_password"
@@ -86,47 +103,84 @@ export GMAIL_APP_PASSWORD="your_app_password"
 docker compose up -d
 ```
 
-Open `http://localhost:5000` in your browser.
+Then open http://localhost:5000 in your browser.
 
 ### Run Locally (without Docker)
 
 ```bash
+git clone https://github.com/SyedaAyeshaRashidi/PulseOps.git
+cd PulseOps
+
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 
 export GMAIL_ADDRESS="your@gmail.com"
 export GMAIL_APP_PASSWORD="your_app_password"
 
-python app.py
+python3 app.py
 ```
 
 ---
 
 ## Alert Conditions
 
-| Condition | Threshold | Behavior |
+| Condition | Threshold | What happens |
 |---|---|---|
 | System CPU | ≥ 85% for 30s | Email alert |
 | System RAM | ≥ 80% for 30s | Email alert |
 | System Disk | ≥ 90% for 30s | Email alert |
-| Container CPU | ≥ 85% | Immediate email alert |
-| Container Memory Warning | ≥ 80% | Email alert |
-| Container Memory Critical | ≥ 90% | Urgent email alert |
-| Container Crash | Unexpected exit | Immediate email alert |
-| Manual Stop | UI button | No alert triggered |
+| Container CPU | ≥ 85% | Email alert right away |
+| Container memory (warning) | ≥ 80% | Email alert |
+| Container memory (critical) | ≥ 90% | Urgent email alert |
+| Container crash | Unexpected exit | Email alert right away |
+| Manual stop | Stopped from the UI | No alert |
 
 ---
 
 ## Deployment
 
-PulseOps is deployed on AWS EC2 (t2.micro, Ubuntu 24.04) using Docker Compose.
-UptimeRobot monitors the dashboard itself for external availability checks.
+I run PulseOps on an AWS EC2 instance (Ubuntu 24.04) and manage it with systemd, so it keeps running in the background and comes back up after a reboot or a crash.
+
+A minimal unit file looks like this:
+
+```ini
+# /etc/systemd/system/pulseops.service
+[Unit]
+Description=PulseOps Dashboard
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/PulseOps
+EnvironmentFile=/etc/pulseops.env
+ExecStart=/home/ubuntu/PulseOps/venv/bin/python app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+The Gmail credentials live in `/etc/pulseops.env` (not in the repo):
+
+```text
+GMAIL_ADDRESS=your@gmail.com
+GMAIL_APP_PASSWORD=your_app_password
+```
+
+Then enable the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now pulseops
+```
+
+The user running the service needs access to the Docker socket, otherwise the container stats won't load.
 
 ---
 
-## Why PulseOps
+## Why I Built This
 
-Most monitoring tools (Grafana, Datadog, Prometheus) require extensive configuration, external agents, and infrastructure overhead. PulseOps was built from scratch to understand the core mechanics of server telemetry, container introspection, real-time data streaming, and alerting pipelines — the same fundamentals that underpin production-grade observability systems.
-
----
-
-<!-- CI/CD test -->
+Tools like Grafana, Datadog and Prometheus are great, but they take a lot of setup and usually need extra agents. I wanted to understand how it all works underneath: collecting server metrics, talking to Docker, streaming data to the browser in real time, and sending alerts. So I built it from scratch.
