@@ -4,7 +4,8 @@ PulseOps is a real-time monitoring dashboard for Linux servers and Docker contai
 
 - **Repository:** https://github.com/SyedaAyeshaRashidi/PulseOps
 - **Live Dashboard:** http://13.60.249.241:5000
-- **Status:** Monitored 24/7 via UptimeRobot
+- **Deployment:** AWS EC2, automated with GitHub Actions
+- **Uptime monitoring:** UptimeRobot
 
 ---
 
@@ -18,30 +19,37 @@ PulseOps is a real-time monitoring dashboard for Linux servers and Docker contai
 
 ### Server Monitoring
 - Live CPU, RAM and disk usage with color-coded bars (green, yellow, red)
-- Updates every 10 seconds over WebSockets (Socket.IO), with a REST call for the first load
+- Updates every 10 seconds over WebSockets (Socket.IO), with a REST call for the initial load
 - Dark UI that works on both desktop and mobile
 
 ### Docker Container Management
 - Lists all running and exited containers using the Docker SDK
 - Start, stop and remove containers from the dashboard
-- **Volume safety check:** if a container has volumes or bind mounts attached, you get a warning before removing it so you don't lose data by accident
-- Launch a new container just by typing an image name
-- **409 conflict handling:** if a container with the same name already exists (exited), it gets restarted instead of throwing an error
+- **Volume safety check:** if a container has volumes or bind mounts attached, a warning is shown before removal to prevent accidental data loss
+- Launch a new container by entering an image name
+- **409 conflict handling:** if a container with the same name already exists (exited), it is restarted instead of returning an error
 
 ### Alerting
-- **System alerts:** CPU ≥ 85%, RAM ≥ 80%, Disk ≥ 90%, and the value has to stay high for 3 checks in a row, so a single spike doesn't trigger a false alarm
+- **System alerts:** CPU ≥ 85%, RAM ≥ 80%, Disk ≥ 90%, sustained over 3 consecutive checks to avoid false positives
 - **Container alerts:** CPU spikes, memory warning (80%), memory critical (90%) and unexpected crashes
-- Tells the difference between a container you stopped from the UI and one that actually crashed. Only real crashes send an alert
-- Emails go out over SMTP using a Gmail App Password
+- Distinguishes between a container stopped from the UI and one that actually crashed. Only genuine crashes trigger an alert
+- Email notifications over SMTP using a Gmail App Password
 
 ### Traffic Monitoring
-- Reads container access logs and counts HTTP requests from the last 5 minutes
-- Request count per container shows up in the table and in the traffic widget
+- Parses container access logs and counts HTTP requests from the last 5 minutes
+- Per-container request count is shown in the dashboard table and the traffic widget
 
-### History
-- SQLite stores past alerts and critical metric spikes, so nothing is lost when the app restarts
-- Separate Alert History page
-- Chart.js graph for critical CPU spikes. It only plots the spikes, not the idle baseline
+### Persistent History
+- SQLite stores past alerts and critical metric spikes, so data survives app restarts
+- Dedicated Alert History page
+- Chart.js graph of critical CPU spikes. Only anomalies are plotted, not idle baseline data
+
+### CI/CD
+- GitHub Actions pipeline automates deployment on every push to `main`
+- No manual copying of files to the server when shipping updates
+
+### Self Monitoring
+- The dashboard itself is monitored externally with UptimeRobot, so downtime of the app or the instance triggers a notification
 
 ---
 
@@ -56,7 +64,8 @@ PulseOps is a real-time monitoring dashboard for Linux servers and Docker contai
 | Real-time | Socket.IO (WebSockets) |
 | Frontend | HTML, vanilla JS, CSS Grid / Flexbox, Chart.js |
 | Email alerts | Python `smtplib` (SMTP over TLS) |
-| Hosting | AWS EC2, systemd, Docker |
+| Hosting | AWS EC2 (Ubuntu 24.04), systemd, Docker |
+| CI/CD | GitHub Actions |
 | Uptime check | UptimeRobot |
 
 ---
@@ -65,6 +74,8 @@ PulseOps is a real-time monitoring dashboard for Linux servers and Docker contai
 
 ```text
 PulseOps/
+├── .github/
+│   └── workflows/          # GitHub Actions CI/CD pipeline
 ├── app.py                  # Flask app, routes, alert logic, background thread
 ├── collector.py            # Host CPU/RAM/Disk metrics via psutil
 ├── docker_health.py        # Container stats via Docker SDK
@@ -75,8 +86,6 @@ PulseOps/
 ├── templates/
 │   ├── dashboard.html      # Main dashboard (dark UI, Socket.IO, Chart.js)
 │   └── alerts.html         # Alert history page
-├── docs/
-│   └── dashboard-preview.png
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
@@ -125,24 +134,24 @@ python3 app.py
 
 ## Alert Conditions
 
-| Condition | Threshold | What happens |
+| Condition | Threshold | Behavior |
 |---|---|---|
 | System CPU | ≥ 85% for 30s | Email alert |
 | System RAM | ≥ 80% for 30s | Email alert |
 | System Disk | ≥ 90% for 30s | Email alert |
-| Container CPU | ≥ 85% | Email alert right away |
+| Container CPU | ≥ 85% | Immediate email alert |
 | Container memory (warning) | ≥ 80% | Email alert |
 | Container memory (critical) | ≥ 90% | Urgent email alert |
-| Container crash | Unexpected exit | Email alert right away |
+| Container crash | Unexpected exit | Immediate email alert |
 | Manual stop | Stopped from the UI | No alert |
 
 ---
 
 ## Deployment
 
-I run PulseOps on an AWS EC2 instance (Ubuntu 24.04) and manage it with systemd, so it keeps running in the background and comes back up after a reboot or a crash.
+PulseOps runs on an AWS EC2 instance (Ubuntu 24.04). The app is managed by systemd, so it runs in the background and restarts automatically after a reboot or a failure.
 
-A minimal unit file looks like this:
+### Systemd Service
 
 ```ini
 # /etc/systemd/system/pulseops.service
@@ -163,24 +172,32 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-The Gmail credentials live in `/etc/pulseops.env` (not in the repo):
+Gmail credentials are kept in `/etc/pulseops.env` and are never committed to the repository:
 
 ```text
 GMAIL_ADDRESS=your@gmail.com
 GMAIL_APP_PASSWORD=your_app_password
 ```
 
-Then enable the service:
+Enable and start the service:
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now pulseops
 ```
 
-The user running the service needs access to the Docker socket, otherwise the container stats won't load.
+The service user needs access to the Docker socket, otherwise container stats will not load.
+
+### CI/CD with GitHub Actions
+
+Deployment is automated with a GitHub Actions workflow located in `.github/workflows/`. Whenever changes are pushed to `main`, the workflow runs and updates the application on the EC2 instance. Sensitive values such as SSH keys and server details are stored in GitHub repository secrets, not in the code.
+
+### Uptime Monitoring
+
+UptimeRobot checks the dashboard at regular intervals and sends a notification if the app or the server becomes unreachable.
 
 ---
 
 ## Why I Built This
 
-Tools like Grafana, Datadog and Prometheus are great, but they take a lot of setup and usually need extra agents. I wanted to understand how it all works underneath: collecting server metrics, talking to Docker, streaming data to the browser in real time, and sending alerts. So I built it from scratch.
+Tools like Grafana, Datadog and Prometheus are powerful, but they need a lot of setup and usually extra agents. I wanted to understand how monitoring works underneath: collecting server metrics, talking to the Docker API, streaming data to the browser in real time, and building an alerting pipeline. So I built PulseOps from scratch.
