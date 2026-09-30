@@ -2,8 +2,6 @@
 
 PulseOps is a real-time monitoring dashboard for Linux servers and Docker containers. It tracks CPU, RAM and disk usage, detects container crashes, monitors HTTP traffic, stores alert history, and sends email notifications when a threshold is crossed. It runs as a self-hosted tool and does not depend on any third-party monitoring service.
 
-- **Repository:** https://github.com/SyedaAyeshaRashidi/PulseOps
-- **Live Dashboard:** http://13.60.249.241:5000
 - **Deployment:** AWS EC2, automated with GitHub Actions
 - **Uptime monitoring:** UptimeRobot
 
